@@ -1,0 +1,3 @@
+#!/bin/sh
+rmmod phy_intr
+insmod phy_intr.ko
