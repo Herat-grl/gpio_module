@@ -28,8 +28,8 @@
 #include <linux/sched/signal.h>
 #endif
  
-#define TEGRA194_AON_GPIO_PORT_BB       257                 //ingpio - pd Intr (Jeton Header Pin#31)
-#define TEGRA194_MAIN_GPIO_PORT_B       250                 //outgpio - pd Intr clr (Jeton Header Pin#29)
+#define TEGRA194_AON_GPIO_PORT_BB       446                 //ingpio - pd Intr (Jeton Header Pin#31)
+#define TEGRA194_MAIN_GPIO_PORT_B       389                 //outgpio - pd Intr clr (Jeton Header Pin#29)
 
 #define SIGETX 44
 
@@ -64,7 +64,8 @@ static struct file_operations fops =
         .unlocked_ioctl = etx_ioctl,
         .release        = etx_release,
 };
- 
+
+#if 0 
 //Interrupt handler for IRQ 11. 
 static irqreturn_t irq_handler(int irq,void *dev_id) {
     int err_stat, lgpioval = 0;
@@ -95,6 +96,7 @@ static irqreturn_t irq_handler(int irq,void *dev_id) {
  	
     return IRQ_HANDLED;
 }
+#endif
  
 static int etx_open(struct inode *inode, struct file *file)
 {
@@ -113,17 +115,80 @@ static int etx_release(struct inode *inode, struct file *file)
     }
     return 0;
 }
- 
-static ssize_t etx_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
-{
-    printk(KERN_INFO "Read Function\n");
-    //asm("int $0x3B");  //Triggering Interrupt. Corresponding to irq 11
-    return 0;
-}
 
 static ssize_t etx_write(struct file *filp, const char __user *buf, size_t len, loff_t *off)
 {
+    printk(KERN_INFO "Write Function\n");
+    //asm("int $0x3B");  //Triggering Interrupt. Corresponding to irq 11
+    
+    return 0;
+}
+
+static ssize_t etx_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
+{
+    int value, result;
+    char data_buf[5];
     printk(KERN_INFO "Write function\n");
+
+    if (copy_from_user(&data_buf, buf, len))  // copy
+    {
+        result = -EFAULT;
+        printk("copy_from_user: Err!\n");
+     return -1;
+    }
+    
+    switch (data_buf[1])
+    {
+        case 1:
+            if(data_buf[0]) {
+                gpio_request(445, "ingpio");
+                gpio_request(256, "outgpio");
+                gpio_direction_input(445);
+                gpio_direction_output(256, data_buf[0]);
+            } else {
+                gpio_request(445, "ingpio");
+                gpio_request(256, "outgpio");
+                gpio_direction_input(445);
+                gpio_direction_output(256, data_buf[0]);
+            }
+            value = gpio_get_value(445);
+            gpio_free(445);
+            gpio_free(256);
+            break;
+        case 2:
+            if(data_buf[0]) {
+                gpio_request(446, "ingpio");
+                gpio_request(389, "outgpio");
+                gpio_direction_input(446);
+                gpio_direction_output(389, data_buf[0]);
+            } else {
+                gpio_request(446, "ingpio");
+                gpio_request(389, "outgpio");
+                gpio_direction_input(446);
+                gpio_direction_output(389, data_buf[0]);
+            }
+            value = gpio_get_value(446);
+            gpio_free(446);
+            gpio_free(389);
+            break;
+        default:
+            printk("invalid pin set\n");
+            return -1;
+    }
+    
+    printk("value : %d\n", value);
+    if(value == data_buf[0]) {
+        printk("pass gpio test...\n");
+        result = 1;
+    } else {
+        printk("fail gpio test...\n");
+        result = 0;
+    }
+    
+    if (copy_to_user(buf, &result, 1)) {
+        pr_err("Data Read : Err!\n");
+      }
+
     return 0;
 }
  
@@ -187,23 +252,23 @@ static int __init etx_driver_init(void)
     }
  
 
-    gpio_request(TEGRA194_AON_GPIO_PORT_BB, "ingpio");
-    //gpio_request(TEGRA194_MAIN_GPIO_PORT_B, "outgpio");
+    // gpio_request(TEGRA194_AON_GPIO_PORT_BB, "ingpio");
+    // gpio_request(TEGRA194_MAIN_GPIO_PORT_B, "outgpio");
 
-    gpio_direction_input(TEGRA194_AON_GPIO_PORT_BB);
-    //gpio_direction_output(TEGRA194_MAIN_GPIO_PORT_B,1);
+    // gpio_direction_input(TEGRA194_AON_GPIO_PORT_BB);
+ //   gpio_direction_output(TEGRA194_MAIN_GPIO_PORT_B,1);
 
-    irq=gpio_to_irq(TEGRA194_AON_GPIO_PORT_BB);
+    // irq=gpio_to_irq(TEGRA194_AON_GPIO_PORT_BB);
 
-    if (request_irq(irq, irq_handler, IRQF_TRIGGER_FALLING, "phy_intr", &dev)) {
-        printk(KERN_INFO "my_device: cannot register IRQ ");
-        goto irq;
-    }
+    // if (request_irq(irq, irq_handler, IRQF_TRIGGER_FALLING, "phy_intr", &dev)) {
+    //     printk(KERN_INFO "my_device: cannot register IRQ ");
+    //     goto irq;
+    // }
  
     printk(KERN_INFO "Device Driver Insert...Done!!!\n");
     return 0;
-irq:
-    free_irq(irq,(void *)(irq_handler));
+// irq:
+//     free_irq(irq,(void *)(irq_handler));
 r_device:
     class_destroy(dev_class);
 r_class:
@@ -214,9 +279,10 @@ r_class:
 static void __exit etx_driver_exit(void)
 {
     int irq;
-    irq=gpio_to_irq(TEGRA194_AON_GPIO_PORT_BB);	
-    free_irq(irq,&dev);
-    //gpio_free(TEGRA194_MAIN_GPIO_PORT_B);
+    //irq=gpio_to_irq(TEGRA194_AON_GPIO_PORT_BB);	
+    //free_irq(irq,&dev);
+    gpio_free(TEGRA194_MAIN_GPIO_PORT_B);
+    gpio_free(TEGRA194_AON_GPIO_PORT_BB);
     device_destroy(dev_class,dev);
     class_destroy(dev_class);
     cdev_del(&etx_cdev);
